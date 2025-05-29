@@ -9,7 +9,7 @@ import (
 
 const LOG = true
 
-const PRIME_SIZE = 1 << 10
+const PRIME_SIZE = 1 << 6
 const MODUL_SIZE = PRIME_SIZE * PRIME_SIZE
 
 var E = big.NewInt(1<<16 + 1)
@@ -18,51 +18,35 @@ func GenerateKey() (*PrivateKey, error) {
 	var key PrivateKey
 
 	for {
-		if LOG {
-			fmt.Printf("  \x1b[33mrsa\x1b[0m: Generating two \x1b[33m%d-bit primes\x1b[0m \x1b[33mp\x1b[0m and \x1b[33mq\x1b[0m...\n", PRIME_SIZE)
-		}
+		var err error
+
+		logf(messages.primeGen, PRIME_SIZE)
 		// Generate two large primes (with bit length PRIME_SIZE).
-		p, err := rand.Prime(rand.Reader, PRIME_SIZE)
+		key.P, err = rand.Prime(rand.Reader, PRIME_SIZE)
 		if err != nil {
 			return nil, err
 		}
-		q, err := rand.Prime(rand.Reader, PRIME_SIZE)
+		key.Q, err = rand.Prime(rand.Reader, PRIME_SIZE)
 		if err != nil {
 			return nil, err
 		}
 
-		if LOG {
-			fmt.Println("  \x1b[33mrsa\x1b[0m: Calculating modulus \x1b[33mN = pq\x1b[0m...")
-			fmt.Printf("  \x1b[33mrsa\x1b[0m: Using a value of \x1b[33mE = %s\x1b[0m...\n", E)
-		}
-		key.N = new(big.Int).Mul(p, q) // N = pq
-		key.E = E                      // E is a known constant
+		logf(messages.modulusGen)
+		logf(messages.valueOfE, E)
+		key.N = new(big.Int).Mul(key.P, key.Q) // N = pq
+		key.E = E                              // E is a known constant
 
-		// Calculate λ(N), where λ is Carmichael's Totient Function. Since
-		// N = pq, λ(N) = lcm(λ(p), λ(q)). Since both p and q are prime numbers,
-		// λ(p) = φ(p) = p - 1 and λ(p) = φ(p) = p - 1. So finally, we have
-		// λ(N) = lcm(p - 1, q - 1) = |(p - 1) * (q - 1)|/gcd(p - 1, q - 1)
-		phiP := new(big.Int).Sub(p, big.NewInt(-1))
-		phiQ := new(big.Int).Sub(q, big.NewInt(-1))
-		top := new(big.Int).Abs(new(big.Int).Mul(phiP, phiQ)) // |φ(p) * φ(q)|
-		gcd := new(big.Int).GCD(nil, nil, phiP, phiQ)         // gcd(φ(p), φ(q))
-		lambdaN := new(big.Int).Div(top, gcd)                 // λ(N)
+		lambdaN := key.LambdaN()
 
-		if LOG {
-			fmt.Println("  \x1b[33mrsa\x1b[0m: Verifying correctness: \x1b[33m1 < E < λ(N)\x1b[0m and \x1b[33mgcd(E, λ(N)) = 1\x1b[0m...")
-		}
+		logf(messages.correctness)
 		// Verify the invariants E < λ(N) and gcd(E, λ(N)) = 1.
-		if E.Cmp(lambdaN) != -1 ||
-			new(big.Int).GCD(nil, nil, lambdaN, E).Cmp(big.NewInt(1)) != 0 {
-			if LOG {
-				fmt.Println("\x1b[31mrsa\x1b[0m: Verification failed. Retrying...")
-			}
+		if !validLambdaN(lambdaN) {
+			logf(messages.notCorrect)
 			continue
 		}
 
-		if LOG {
-			fmt.Println("  \x1b[33mrsa\x1b[0m: Generating private key \x1b[33mD\x1b[0m from \x1b[33mDE = 1 (mod λ(N))\x1b[0m...")
-		}
+		logf(messages.keyGen)
+
 		// Find D such that D * E = 1 (mod λ(N))
 		key.D = new(big.Int).ModInverse(E, lambdaN)
 
@@ -70,12 +54,17 @@ func GenerateKey() (*PrivateKey, error) {
 	}
 }
 
+func validLambdaN(lambdaN *big.Int) bool {
+	return lambdaN.Cmp(E) == 1 && new(big.Int).GCD(nil, nil, lambdaN, E).Cmp(big.NewInt(1)) == 0
+}
+
 // An RSA private key consists of the public part of the key, with the
 // additional private exponent which acts as the complement of the public one
 // under modular arithmetic. Specifically, ∀ 0 <= m < N, (m^E)^D = m (mod N).
 type PrivateKey struct {
 	PublicKey
-	D *big.Int // exponent (private)
+	P, Q *big.Int // primes such that N = PQ
+	D    *big.Int // exponent (private)
 }
 
 // The RSA cryptosystem can also be used to veryfiy message authenticity by
@@ -90,6 +79,20 @@ func (key *PrivateKey) Apply(data *big.Int) (*big.Int, error) {
 	}
 
 	return signingKey.Apply(data)
+}
+
+// LambdaN calculates λ(N), where λ is Carmichael's Totient Function. Provided
+// parameters p and q are the only prime factors of N, i.e. N = pq.
+func (key *PrivateKey) LambdaN() *big.Int {
+	// Since N = pq, λ(N) = lcm(λ(p), λ(q)). Since both p and q are primes,
+	// λ(p) = φ(p) = p - 1 and λ(p) = φ(p) = p - 1. So finally, we have
+	// λ(N) = lcm(p - 1, q - 1) = |(p - 1) * (q - 1)|/gcd(p - 1, q - 1)
+	phiP := new(big.Int).Sub(key.P, big.NewInt(-1))
+	phiQ := new(big.Int).Sub(key.Q, big.NewInt(-1))
+	top := new(big.Int).Abs(new(big.Int).Mul(phiP, phiQ)) // |φ(p) * φ(q)|
+	gcd := new(big.Int).GCD(nil, nil, phiP, phiQ)         // gcd(φ(p), φ(q))
+
+	return new(big.Int).Div(top, gcd)
 }
 
 // An RSA public key consists of the modulus used in all the modular arithmetic
