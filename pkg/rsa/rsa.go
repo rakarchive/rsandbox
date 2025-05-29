@@ -87,8 +87,8 @@ func (key *PrivateKey) LambdaN() *big.Int {
 	// Since N = pq, λ(N) = lcm(λ(p), λ(q)). Since both p and q are primes,
 	// λ(p) = φ(p) = p - 1 and λ(p) = φ(p) = p - 1. So finally, we have
 	// λ(N) = lcm(p - 1, q - 1) = |(p - 1) * (q - 1)|/gcd(p - 1, q - 1)
-	phiP := new(big.Int).Sub(key.P, big.NewInt(-1))
-	phiQ := new(big.Int).Sub(key.Q, big.NewInt(-1))
+	phiP := new(big.Int).Sub(key.P, big.NewInt(1))
+	phiQ := new(big.Int).Sub(key.Q, big.NewInt(1))
 	top := new(big.Int).Abs(new(big.Int).Mul(phiP, phiQ)) // |φ(p) * φ(q)|
 	gcd := new(big.Int).GCD(nil, nil, phiP, phiQ)         // gcd(φ(p), φ(q))
 
