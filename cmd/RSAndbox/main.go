@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"strings"
 
@@ -20,8 +21,10 @@ func main() {
 	}
 
 	// Prerun some commands
+	_ = context.RunCmd("help", "", true)
 	_ = context.RunCmd("add", "Alice Bob", true)
 	_ = context.RunCmd("list", "", true)
+	_ = context.RunCmd("inspect", "Bob", true)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -47,14 +50,21 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 
 	switch cmd {
 	case "help":
-		fmt.Println(`
-  RSAndbox is a sandbox environment which allows playing around with the RSA
-  cryptosystem and its various elements such as key generation, encryption and
-  decryption, message signing and verification, etc. The available commands are:
-
-  help           For displaying this help message.
-  list           List the available people and their keys.
-  add            Add a new person and generate a new key pair for them.`)
+		fmt.Print("\x1b[33m")
+		fmt.Println("  RSAndbox is a sandbox environment which allows playing around with")
+		fmt.Println("  the RSA cryptosystem and its various elements such as key generation,")
+		fmt.Println("  encryption and decryption, message signing and verification, etc.")
+		fmt.Println("  The available commands are:")
+		fmt.Println("\x1b[0m")
+		fmt.Println("  \x1b[32mhelp\x1b[0m             For displaying this help message.")
+		fmt.Println("  \x1b[32mlist\x1b[0m             List the available people and their keys.")
+		fmt.Println("  \x1b[32madd\x1b[0m \x1b[33m<name>\x1b[0m       Generate a new key pair with the given name.")
+		fmt.Println("  \x1b[32minspect\x1b[0m \x1b[33m<name>\x1b[0m   Inspect the key pair for the given person.")
+		fmt.Println()
+		fmt.Println("  \x1b[32mencrypt\x1b[0m \x1b[33m<name> <message>\x1b[0m   Applies the public key to the string.")
+		fmt.Println("  \x1b[32mdecrypt\x1b[0m \x1b[33m<name> <message>\x1b[0m   Applies the private key to the ciphertext.")
+		fmt.Println("  \x1b[32msign\x1b[0m \x1b[33m<name> <message>\x1b[0m      Applies the private key to the string.")
+		fmt.Println("  \x1b[32mverify\x1b[0m \x1b[33m<name> <message>\x1b[0m    Applies the public key to the ciphertext.")
 	case "list":
 		i := 1
 		for name, key := range context.people {
@@ -88,10 +98,58 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 		fmt.Printf("    \x1b[31mQ\x1b[0m    = %X\n", key.Q)
 		fmt.Printf("    \x1b[31mλ(N)\x1b[0m = %X\n", key.LambdaN())
 		fmt.Printf("    \x1b[31mD\x1b[0m    = %X\n", key.D)
+
+	case "encrypt":
+		return context.rsaHelper(args, true, false)
+	case "decrypt":
+		return context.rsaHelper(args, false, true)
+	case "sign":
+		return context.rsaHelper(args, false, false)
+	case "verify":
+		return context.rsaHelper(args, true, true)
+
 	default:
 		fmt.Print("\x1b[1F\x1b[0K")
 		fmt.Printf("\x1b[31m%s %s\x1b[0m\n", cmd, args)
 		return fmt.Errorf("unknown command %s", cmd)
 	}
+	return nil
+}
+
+func (context *context) rsaHelper(prompt string, publicKey, rawInput bool) error {
+	keyOf, dataStr, _ := strings.Cut(prompt, " ")
+	key, found := context.people[keyOf]
+	if !found {
+		return fmt.Errorf("no person named \x1b[31m%s\x1b[0m found", keyOf)
+	}
+
+	data := new(big.Int)
+	if rawInput {
+		_, ok := data.SetString(dataStr, 16)
+		if !ok {
+			return fmt.Errorf("couldn't parse raw input %s", dataStr)
+		}
+	} else {
+		data.SetBytes([]byte(dataStr))
+	}
+
+	var err error
+	applied := new(big.Int)
+
+	if publicKey {
+		applied, err = key.PublicKey.Apply(data)
+	} else {
+		applied, err = key.Apply(data)
+	}
+	if err != nil {
+		return err
+	}
+
+	if rawInput {
+		fmt.Printf("  %s\n", string(applied.Bytes()))
+	} else {
+		fmt.Printf("  %x\n", applied)
+	}
+
 	return nil
 }
