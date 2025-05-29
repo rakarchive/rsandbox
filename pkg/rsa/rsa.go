@@ -7,13 +7,28 @@ import (
 	"math/big"
 )
 
+// Whether to log steps while doing computations.
 const LOG = true
 
+// Size of the the primes P, Q and the modulus N.
 const PRIME_SIZE = 1 << 6
 const MODUL_SIZE = PRIME_SIZE * PRIME_SIZE
 
+// Use a smallish public E for efficient encryption.
 var E = big.NewInt(1<<16 + 1)
 
+// GenerateKey generates a cryptographically secure key pair conforming to the
+// bit-sizes and the value of E establised the the global constants. To be
+// specific, it generates two primes P, Q with bit-lengths equal to PRIME_SIZE.
+// The modulus N is calculated as P times Q. It can be shown that a value of D
+// satisfying the equation DE = 1 (mod λ(N)) has the property that ∀ 0 <= m < N,
+// (m^E)^D = m (mod N). Thus the values of N and E are exposed as part of the
+// public key and D as part of the private key, where m^E (mod N) is the
+// encryption operation and (m^E)^D = m (mod N) is the decryption operation.
+//
+// # Proof of Correctness
+// Since ED = 1 (mod λ(N)), m^ED = m^(1 + hλ(N)) = m(m^λ(N))^h = m(1)^h = m.
+// Here m^λ(N) = 1 (mod N) by definition of the Carmichael Totient Function.
 func GenerateKey() (*PrivateKey, error) {
 	var key PrivateKey
 
@@ -36,10 +51,9 @@ func GenerateKey() (*PrivateKey, error) {
 		key.N = new(big.Int).Mul(key.P, key.Q) // N = pq
 		key.E = E                              // E is a known constant
 
+		// Calculate the Carmichael Totient Function of N and verify some of the
+		// the invariants expected of it by RSA.
 		lambdaN := key.LambdaN()
-
-		logf(messages.correctness)
-		// Verify the invariants E < λ(N) and gcd(E, λ(N)) = 1.
 		if !validLambdaN(lambdaN) {
 			logf(messages.notCorrect)
 			continue
@@ -47,15 +61,19 @@ func GenerateKey() (*PrivateKey, error) {
 
 		logf(messages.keyGen)
 
-		// Find D such that D * E = 1 (mod λ(N))
+		// Find D such that D * E = 1 (mod λ(N)), which will be our decryption
+		// key as ∀ 0 <= m < N, (m^E)^D = m (mod N).
 		key.D = new(big.Int).ModInverse(E, lambdaN)
 
 		return &key, nil
 	}
 }
 
+// validLambdaN checks if the given λ(N) upholds the invariants which are
+// expected by the RSA cryptographic system: gcd(E, λ(N)) = 1 and E < λ(N).
 func validLambdaN(lambdaN *big.Int) bool {
-	return lambdaN.Cmp(E) == 1 && new(big.Int).GCD(nil, nil, lambdaN, E).Cmp(big.NewInt(1)) == 0
+	return lambdaN.Cmp(E) == 1 &&
+		new(big.Int).GCD(nil, nil, lambdaN, E).Cmp(big.NewInt(1)) == 0
 }
 
 // An RSA private key consists of the public part of the key, with the
