@@ -102,13 +102,14 @@ type PublicKey struct {
 	E *big.Int // exponent (public)
 }
 
+// Apply applies the public key to the given data.
 func (key *PublicKey) Apply(data *big.Int) (*big.Int, error) {
 	switch {
 	// Verify that 0 <= data < N.
 	case data.Cmp(key.N) != -1:
-		return nil, errors.New("  \x1b[33mrsa\x1b[0m: data integer larger than modulus")
+		return nil, errors.New("\x1b[31mrsa\x1b[0m: data integer larger than modulus")
 	case data.Cmp(big.NewInt(0)) == -1:
-		return nil, errors.New("  \x1b[33mrsa\x1b[0m: data integer is negative")
+		return nil, errors.New("\x1b[31mrsa\x1b[0m: data integer is negative")
 
 	// All invariants upheld, proceed with encryption.
 	default:
