@@ -68,10 +68,8 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 		fmt.Println("  \x1b[32madd\x1b[0m \x1b[33m<name>\x1b[0m       Generate a new key pair with the given name.")
 		fmt.Println("  \x1b[32minspect\x1b[0m \x1b[33m<name>\x1b[0m   Inspect the key pair for the given person.")
 		fmt.Println()
-		fmt.Println("  \x1b[32mencrypt\x1b[0m \x1b[33m<name> <message>\x1b[0m   Applies the public key to the string.")
-		fmt.Println("  \x1b[32mdecrypt\x1b[0m \x1b[33m<name> <message>\x1b[0m   Applies the private key to the ciphertext.")
-		fmt.Println("  \x1b[32msign\x1b[0m \x1b[33m<name> <message>\x1b[0m      Applies the private key to the string.")
-		fmt.Println("  \x1b[32mverify\x1b[0m \x1b[33m<name> <message>\x1b[0m    Applies the public key to the ciphertext.")
+		fmt.Println("  \x1b[32mapply(public)\x1b[0m \x1b[33m<name> <message>\x1b[0m   Applies the public key to the data.")
+		fmt.Println("  \x1b[32mapply(private)\x1b[0m \x1b[33m<name> <message>\x1b[0m   Applies the private key to the data.")
 
 		return nil, nil
 	case "list":
@@ -114,9 +112,9 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 
 		return nil, nil
 
-	case "encrypt":
+	case "apply(public)":
 		return context.rsaHelper(args, true)
-	case "decrypt":
+	case "apply(private)":
 		return context.rsaHelper(args, false)
 
 	case "attack(multiply)":
