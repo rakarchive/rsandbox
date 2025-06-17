@@ -8,31 +8,37 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/rakarchive/rsa/pkg/rsa"
 )
 
 type context struct {
-	people map[string]*rsa.PrivateKey
+	lastResult *big.Int
+	people     map[string]*rsa.PrivateKey
 }
 
 func main() {
 	context := context{
-		people: make(map[string]*rsa.PrivateKey),
+		lastResult: big.NewInt(0),
+		people:     make(map[string]*rsa.PrivateKey),
 	}
 
 	// Prerun some commands
-	_ = context.RunCmd("help", "", true)
-	_ = context.RunCmd("add", "Alice Bob", true)
-	_ = context.RunCmd("list", "", true)
-	_ = context.RunCmd("inspect", "Bob", true)
+	_, _ = context.RunCmd("help", "", true)
+	_, _ = context.RunCmd("add", "Alice Bob", true)
+	_, _ = context.RunCmd("list", "", true)
+	_, _ = context.RunCmd("inspect", "Bob", true)
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		prompt := scanner.Text()
 		cmd, args, _ := strings.Cut(strings.Trim(prompt, " \t\n\r"), " ")
-		switch err := context.RunCmd(cmd, args, false); err {
+		switch result, err := context.RunCmd(cmd, args, false); err {
 		case nil:
+			if result != nil {
+				context.lastResult = result
+			}
 		case errorStop:
 			return
 		default:
@@ -43,7 +49,7 @@ func main() {
 
 var errorStop = errors.New("stop sandbox")
 
-func (context *context) RunCmd(cmd, args string, auto bool) error {
+func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 	if !auto {
 		fmt.Print("\x1b[1F\x1b[0K")
 	}
@@ -66,12 +72,16 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 		fmt.Println("  \x1b[32mdecrypt\x1b[0m \x1b[33m<name> <message>\x1b[0m   Applies the private key to the ciphertext.")
 		fmt.Println("  \x1b[32msign\x1b[0m \x1b[33m<name> <message>\x1b[0m      Applies the private key to the string.")
 		fmt.Println("  \x1b[32mverify\x1b[0m \x1b[33m<name> <message>\x1b[0m    Applies the public key to the ciphertext.")
+
+		return nil, nil
 	case "list":
 		i := 1
 		for name, key := range context.people {
 			fmt.Printf("  %2d. %-10s (\x1b[34m%s\x1b[0m)\n", i, name, key)
 			i += 1
 		}
+
+		return nil, nil
 	case "add":
 		for _, name := range strings.Split(args, " ") {
 			key, err := rsa.GenerateKey()
@@ -82,12 +92,14 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 			context.people[name] = key
 			fmt.Printf("  \x1b[32msandbox\x1b[0m: added person \x1b[33m%s\x1b[0m with key \x1b[34m%s\x1b[0m\n", name, key)
 		}
+
+		return nil, nil
 	case "quit", "exit":
-		return errorStop
+		return nil, errorStop
 	case "inspect":
 		key, found := context.people[args]
 		if !found {
-			return fmt.Errorf("no person named \x1b[31m%s\x1b[0m found", args)
+			return nil, fmt.Errorf("no person named \x1b[31m%s\x1b[0m found", args)
 		}
 
 		fmt.Println("  \x1b[32mPublic data:\x1b[0m")
@@ -100,29 +112,27 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 		fmt.Printf("    \x1b[31mλ(N)\x1b[0m = %X\n", key.LambdaN())
 		fmt.Printf("    \x1b[31mD\x1b[0m    = %X\n", key.D)
 
+		return nil, nil
+
 	case "encrypt":
-		return context.rsaHelper(args, true, false)
+		return context.rsaHelper(args, true)
 	case "decrypt":
-		return context.rsaHelper(args, false, true)
-	case "sign":
-		return context.rsaHelper(args, false, false)
-	case "verify":
-		return context.rsaHelper(args, true, true)
+		return context.rsaHelper(args, false)
 
 	case "attack(multiply)":
 		keyName, rest, found := strings.Cut(args, " ")
 		if !found {
-			return errors.New("expected a key, a fraction, and a message")
+			return nil, errors.New("expected a key, a fraction, and a message")
 		}
 
 		fraction, messageStr, found := strings.Cut(rest, " ")
 		if !found {
-			return errors.New("expected a key, a fraction, and a message")
+			return nil, errors.New("expected a key, a fraction, and a message")
 		}
 
 		key, found := context.people[keyName]
 		if !found {
-			return fmt.Errorf("no person named \x1b[31m%s\x1b[0m found", keyName)
+			return nil, fmt.Errorf("no person named \x1b[31m%s\x1b[0m found", keyName)
 		}
 
 		nStr, dStr, found := strings.Cut(fraction, "/")
@@ -132,26 +142,26 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 
 		n, err := strconv.ParseInt(nStr, 10, 64)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		d, err := strconv.ParseInt(dStr, 10, 64)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		msg, ok := new(big.Int).SetString(messageStr, 16)
-		if !ok {
-			return fmt.Errorf("\"%s\" is not a valid number", messageStr)
+		msg, err := context.parseData(messageStr)
+		if err != nil {
+			return nil, err
 		}
 
 		nCoeff, err := key.PublicKey.Apply(big.NewInt(n))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		dInv := new(big.Int).ModInverse(big.NewInt(d), key.N)
 		dCoeff, err := key.PublicKey.Apply(dInv)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		msg.Mul(msg, nCoeff)
@@ -160,12 +170,14 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 
 		fmt.Printf("  %x\n", msg)
 
+		return msg, nil
+
 	case "key":
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter key name: ")
 		name, err := reader.ReadString('\n')
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		name = strings.Trim(name, " \n\r\t")
@@ -173,56 +185,51 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 		fmt.Print("Enter value of p: ")
 		pStr, err := reader.ReadString('\n')
 		if err != nil {
-			return err
+			return nil, err
 		}
 		pStr = strings.Trim(pStr, " \n\r\t")
 		fmt.Print("Enter value of q: ")
 		qStr, err := reader.ReadString('\n')
 		if err != nil {
-			return err
+			return nil, err
 		}
 		qStr = strings.Trim(qStr, " \n\r\t")
 
 		p, ok := new(big.Int).SetString(pStr, 10)
 		if !ok {
-			return fmt.Errorf("\"%s\" is not a valid number", pStr)
+			return nil, fmt.Errorf("\"%s\" is not a valid number", pStr)
 		}
 		q, ok := new(big.Int).SetString(qStr, 10)
 		if !ok {
-			return fmt.Errorf("\"%s\" is not a valid number", qStr)
+			return nil, fmt.Errorf("\"%s\" is not a valid number", qStr)
 		}
 
 		context.people[name], err = rsa.NewPrivateKey(p, q)
 		if err != nil {
-			return err
+			return nil, err
 		}
+
+		return nil, nil
 
 	default:
 		fmt.Print("\x1b[1F\x1b[0K")
 		fmt.Printf("\x1b[31m%s %s\x1b[0m\n", cmd, args)
-		return fmt.Errorf("unknown command %s", cmd)
+		return nil, fmt.Errorf("unknown command %s", cmd)
 	}
-	return nil
 }
 
-func (context *context) rsaHelper(prompt string, publicKey, rawInput bool) error {
+func (context *context) rsaHelper(prompt string, publicKey bool) (*big.Int, error) {
 	keyOf, dataStr, _ := strings.Cut(prompt, " ")
 	key, found := context.people[keyOf]
 	if !found {
-		return fmt.Errorf("no person named \x1b[31m%s\x1b[0m found", keyOf)
+		return nil, fmt.Errorf("no person named \x1b[31m%s\x1b[0m found", keyOf)
 	}
 
-	data := new(big.Int)
-	if rawInput {
-		_, ok := data.SetString(dataStr, 16)
-		if !ok {
-			return fmt.Errorf("couldn't parse raw input %s", dataStr)
-		}
-	} else {
-		data.SetBytes([]byte(dataStr))
+	data, err := context.parseData(dataStr)
+	if err != nil {
+		return nil, err
 	}
 
-	var err error
 	applied := new(big.Int)
 
 	if publicKey {
@@ -231,13 +238,39 @@ func (context *context) rsaHelper(prompt string, publicKey, rawInput bool) error
 		applied, err = key.Apply(data)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if rawInput {
-		fmt.Printf("  %s\n", string(applied.Bytes()))
-	}
-	fmt.Printf("  %x\n", applied)
+	fmt.Printf("  raw:   \x1b[33m%x\x1b[0m\n", applied)
+	fmt.Printf("  utf-8: \x1b[33m%s\x1b[0m\n", toSafeString(applied.Bytes()))
 
-	return nil
+	return applied, nil
+}
+
+func (context *context) parseData(str string) (*big.Int, error) {
+	if str == "$" {
+		return context.lastResult, nil
+	}
+
+	if strings.HasPrefix(str, "0") {
+		data, ok := new(big.Int).SetString(str, 0)
+		if !ok {
+			return nil, fmt.Errorf("couldn't parse raw input %s", str)
+		}
+		return data, nil
+	}
+
+	return new(big.Int).SetBytes([]byte(str)), nil
+}
+
+func toSafeString(bytes []byte) string {
+	str := ""
+	for _, char := range bytes {
+		if unicode.IsPrint(rune(char)) {
+			str += string(char)
+		} else {
+			str += string(unicode.ReplacementChar)
+		}
+	}
+	return str
 }
