@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/rakarchive/rsa/pkg/rsa"
@@ -108,6 +109,57 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 	case "verify":
 		return context.rsaHelper(args, true, true)
 
+	case "attack(multiply)":
+		keyName, rest, found := strings.Cut(args, " ")
+		if !found {
+			return errors.New("expected a key, a fraction, and a message")
+		}
+
+		fraction, messageStr, found := strings.Cut(rest, " ")
+		if !found {
+			return errors.New("expected a key, a fraction, and a message")
+		}
+
+		key, found := context.people[keyName]
+		if !found {
+			return fmt.Errorf("no person named \x1b[31m%s\x1b[0m found", keyName)
+		}
+
+		nStr, dStr, found := strings.Cut(fraction, "/")
+		if !found {
+			dStr = "1"
+		}
+
+		n, err := strconv.ParseInt(nStr, 10, 64)
+		if err != nil {
+			return err
+		}
+		d, err := strconv.ParseInt(dStr, 10, 64)
+		if err != nil {
+			return err
+		}
+
+		msg, ok := new(big.Int).SetString(messageStr, 16)
+		if !ok {
+			return fmt.Errorf("\"%s\" is not a valid number", messageStr)
+		}
+
+		nCoeff, err := key.PublicKey.Apply(big.NewInt(n))
+		if err != nil {
+			return err
+		}
+		dInv := new(big.Int).ModInverse(big.NewInt(d), key.N)
+		dCoeff, err := key.PublicKey.Apply(dInv)
+		if err != nil {
+			return err
+		}
+
+		msg.Mul(msg, nCoeff)
+		msg.Mul(msg, dCoeff)
+		msg.Mod(msg, key.N)
+
+		fmt.Printf("  %x\n", msg)
+
 	case "key":
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter key name: ")
@@ -184,9 +236,8 @@ func (context *context) rsaHelper(prompt string, publicKey, rawInput bool) error
 
 	if rawInput {
 		fmt.Printf("  %s\n", string(applied.Bytes()))
-	} else {
-		fmt.Printf("  %x\n", applied)
 	}
+	fmt.Printf("  %x\n", applied)
 
 	return nil
 }
