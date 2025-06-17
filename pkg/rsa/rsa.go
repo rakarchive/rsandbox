@@ -30,43 +30,56 @@ var E = big.NewInt(1<<16 + 1)
 // Since ED = 1 (mod λ(N)), m^ED = m^(1 + hλ(N)) = m(m^λ(N))^h = m(1)^h = m.
 // Here m^λ(N) = 1 (mod N) by definition of the Carmichael Totient Function.
 func GenerateKey() (*PrivateKey, error) {
-	var key PrivateKey
-
 	for {
-		var err error
-
 		logf(messages.primeGen, PRIME_SIZE)
 		// Generate two large primes (with bit length PRIME_SIZE).
-		key.P, err = rand.Prime(rand.Reader, PRIME_SIZE)
+		p, err := rand.Prime(rand.Reader, PRIME_SIZE)
 		if err != nil {
 			return nil, err
 		}
-		key.Q, err = rand.Prime(rand.Reader, PRIME_SIZE)
+		q, err := rand.Prime(rand.Reader, PRIME_SIZE)
 		if err != nil {
 			return nil, err
 		}
 
-		logf(messages.modulusGen)
-		logf(messages.valueOfE, E)
-		key.N = new(big.Int).Mul(key.P, key.Q) // N = pq
-		key.E = E                              // E is a known constant
-
-		// Calculate the Carmichael Totient Function of N and verify some of the
-		// the invariants expected of it by RSA.
-		lambdaN := key.LambdaN()
-		if !validLambdaN(lambdaN) {
+		key, err := NewPrivateKey(p, q)
+		if err == errorInvalidLambda {
 			logf(messages.notCorrect)
 			continue
+		} else if err != nil {
+			return nil, err
+		} else {
+			return key, nil
 		}
-
-		logf(messages.keyGen)
-
-		// Find D such that D * E = 1 (mod λ(N)), which will be our decryption
-		// key as ∀ 0 <= m < N, (m^E)^D = m (mod N).
-		key.D = new(big.Int).ModInverse(E, lambdaN)
-
-		return &key, nil
 	}
+}
+
+var errorInvalidLambda = errors.New(messages.notCorrect)
+
+func NewPrivateKey(p *big.Int, q *big.Int) (*PrivateKey, error) {
+	var key PrivateKey
+	key.P = p
+	key.Q = q
+
+	logf(messages.modulusGen)
+	logf(messages.valueOfE, E)
+	key.N = new(big.Int).Mul(p, q) // N = pq
+	key.E = E                      // E is a known constant
+
+	// Calculate the Carmichael Totient Function of N and verify some of the
+	// the invariants expected of it by RSA.
+	lambdaN := key.LambdaN()
+	if !validLambdaN(lambdaN) {
+		return nil, errorInvalidLambda
+	}
+
+	logf(messages.keyGen)
+
+	// Find D such that D * E = 1 (mod λ(N)), which will be our decryption
+	// key as ∀ 0 <= m < N, (m^E)^D = m (mod N).
+	key.D = new(big.Int).ModInverse(E, lambdaN)
+
+	return &key, nil
 }
 
 // validLambdaN checks if the given λ(N) upholds the invariants which are

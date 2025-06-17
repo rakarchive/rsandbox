@@ -108,6 +108,43 @@ func (context *context) RunCmd(cmd, args string, auto bool) error {
 	case "verify":
 		return context.rsaHelper(args, true, true)
 
+	case "key":
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Enter key name: ")
+		name, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+
+		name = strings.Trim(name, " \n\r\t")
+
+		fmt.Print("Enter value of p: ")
+		pStr, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		pStr = strings.Trim(pStr, " \n\r\t")
+		fmt.Print("Enter value of q: ")
+		qStr, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		qStr = strings.Trim(qStr, " \n\r\t")
+
+		p, ok := new(big.Int).SetString(pStr, 10)
+		if !ok {
+			return fmt.Errorf("\"%s\" is not a valid number", pStr)
+		}
+		q, ok := new(big.Int).SetString(qStr, 10)
+		if !ok {
+			return fmt.Errorf("\"%s\" is not a valid number", qStr)
+		}
+
+		context.people[name], err = rsa.NewPrivateKey(p, q)
+		if err != nil {
+			return err
+		}
+
 	default:
 		fmt.Print("\x1b[1F\x1b[0K")
 		fmt.Printf("\x1b[31m%s %s\x1b[0m\n", cmd, args)
