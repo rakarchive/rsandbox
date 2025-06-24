@@ -254,6 +254,65 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 
 		return nil, nil
 
+	case "share":
+		nStr, rest, ok := strings.Cut(args, " ")
+		if !ok {
+			return nil, errors.New("expected n, k, and the secret")
+		}
+
+		kStr, secret, ok := strings.Cut(rest, " ")
+		if !ok {
+			return nil, errors.New("expected n, k, and the secret")
+		}
+
+		n, err := strconv.Atoi(nStr)
+		if err != nil {
+			return nil, err
+		}
+		k, err := strconv.Atoi(kStr)
+		if err != nil {
+			return nil, err
+		}
+
+		shares, err := rsa.ShamirEncode([]byte(secret), byte(n), byte(k))
+		if err != nil {
+			return nil, err
+		}
+
+		for i, share := range shares {
+			fmt.Printf("%d. \x1b[33m%#x\x1b[0m\n", i+1, share)
+		}
+
+		// TEMP
+		secret_rev, err := rsa.Decode(shares[:k])
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Printf("  raw:   \x1b[33m%x\x1b[0m\n", secret_rev)
+		fmt.Printf("  utf-8: \x1b[33m%s\x1b[0m\n", toSafeString(secret_rev))
+		//TEMP
+		return nil, nil
+	case "collect":
+		shareStrs := strings.Split(args, " ")
+		shares := make([][]byte, len(shareStrs))
+		for i, shareStr := range shareStrs {
+			shareInt, err := context.parseData(shareStr)
+			if err != nil {
+				return nil, err
+			}
+
+			shares[i] = shareInt.Bytes()
+		}
+
+		secret, err := rsa.Decode(shares)
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Printf("  raw:   \x1b[33m%x\x1b[0m\n", secret)
+		fmt.Printf("  utf-8: \x1b[33m%s\x1b[0m\n", toSafeString(secret))
+		return nil, nil
 	default:
 		fmt.Print("\x1b[1F\x1b[0K")
 		fmt.Printf("\x1b[31m%s %s\x1b[0m\n", cmd, args)
