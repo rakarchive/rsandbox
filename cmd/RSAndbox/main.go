@@ -117,6 +117,51 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 	case "apply(private)":
 		return context.rsaHelper(args, false)
 
+	case "key-x":
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Enter the base:    ")
+		baseStr, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		fmt.Print("Enter the modulus: ")
+		modStr, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+
+		base, err := context.parseData(baseStr)
+		if err != nil {
+			return nil, err
+		}
+
+		mod, err := context.parseData(modStr)
+		if err != nil {
+			return nil, err
+		}
+
+		private, err := rsa.Random(mod)
+		if err != nil {
+			return nil, err
+		}
+		public := new(big.Int).Exp(base, private, mod)
+		fmt.Printf("Public key: \x1b[33m%#x\x1b[0m\n", public)
+
+		fmt.Print("Enter the other public key: ")
+		keyStr, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+
+		key, err := context.parseData(keyStr)
+		if err != nil {
+			return nil, err
+		}
+
+		secret := new(big.Int).Exp(key, private, mod)
+		fmt.Printf("Generated Shared Secret: \x1b[33m%#x\x1b[0m\n", secret)
+		return secret, nil
+
 	case "attack(multiply)":
 		keyName, rest, found := strings.Cut(args, " ")
 		if !found {
@@ -246,6 +291,7 @@ func (context *context) rsaHelper(prompt string, publicKey bool) (*big.Int, erro
 }
 
 func (context *context) parseData(str string) (*big.Int, error) {
+	str = strings.Trim(str, " \t\n\r")
 	if str == "$" {
 		return context.lastResult, nil
 	}

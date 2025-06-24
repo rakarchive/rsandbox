@@ -11,11 +11,15 @@ import (
 const LOG = true
 
 // Size of the the primes P, Q and the modulus N.
-const PRIME_SIZE = 1 << 6
+const PRIME_SIZE = 1 << 5
 const MODUL_SIZE = PRIME_SIZE * PRIME_SIZE
 
 // Use a smallish public E for efficient encryption.
 var E = big.NewInt(1<<16 + 1)
+
+func Random(max *big.Int) (*big.Int, error) {
+	return rand.Int(rand.Reader, max)
+}
 
 // GenerateKey generates a cryptographically secure key pair conforming to the
 // bit-sizes and the value of E establised the the global constants. To be
