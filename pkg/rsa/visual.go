@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
-	"errors"
 	"image"
 	"image/color"
 	"image/png"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 
 	"golang.org/x/image/draw"
@@ -48,10 +47,10 @@ func ConvertImageToBWBinary(img image.Image, resizeWidth int) (*Image, error) {
 	var buf bytes.Buffer
 
 	// Write width and height (big endian)
-	if err := binary.Write(&buf, binary.BigEndian, uint16(width)); err != nil {
+	if err := binary.Write(&buf, binary.BigEndian, uint16(height)); err != nil {
 		return nil, err
 	}
-	if err := binary.Write(&buf, binary.BigEndian, uint16(height)); err != nil {
+	if err := binary.Write(&buf, binary.BigEndian, uint16(width)); err != nil {
 		return nil, err
 	}
 
@@ -59,14 +58,14 @@ func ConvertImageToBWBinary(img image.Image, resizeWidth int) (*Image, error) {
 	var byteBuf byte
 	bitPos := 6
 
-	for x := bounds.Min.X; x < bounds.Max.X; x++ {
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			c := color.GrayModel.Convert(img.At(x, y)).(color.Gray)
 			var val byte
 			if c.Y > 128 {
-				val = 0b00 // white
+				val = byte(White)
 			} else {
-				val = 0b01 // black
+				val = byte(Black)
 			}
 			byteBuf |= val << bitPos
 			bitPos -= 2
@@ -90,13 +89,13 @@ func CreateShares(secret *Image) (*Image, *Image) {
 	share2 := Image{Rows: secret.Rows, Cols: secret.Cols, Pixels: []Pixel{}}
 
 	for _, pixel := range secret.Pixels {
-		rand := Pixel(rand.Int() & 1)
+		rand := Pixel(1 << (rand.Int() & 1))
 		if pixel == Blocker {
-			share1.Pixels = append(share1.Pixels, Left^rand)
-			share2.Pixels = append(share2.Pixels, Right^rand)
+			share1.Pixels = append(share1.Pixels, rand)
+			share2.Pixels = append(share2.Pixels, rand.Other())
 		} else {
-			share1.Pixels = append(share1.Pixels, Left^rand)
-			share2.Pixels = append(share2.Pixels, Left^rand)
+			share1.Pixels = append(share1.Pixels, rand)
+			share2.Pixels = append(share2.Pixels, rand)
 		}
 	}
 
@@ -106,28 +105,20 @@ func CreateShares(secret *Image) (*Image, *Image) {
 type Pixel byte
 
 const (
-	White Pixel = iota
-	Black
-	Left
-	Right
+	White Pixel = 0b00
+	Black Pixel = ^White & 0b11
+	Left  Pixel = 0b10
+	Right Pixel = 0b01
 
-	Blocker = Black
+	Blocker = White
 )
 
 func (p Pixel) Other() Pixel {
-	return p ^ 1
+	return ^p & 0b11
 }
 
 func (p Pixel) Add(q Pixel) Pixel {
-	if p == Blocker || q == Blocker.Other() {
-		return p
-	} else if p == Blocker.Other() || q == Blocker {
-		return q
-	} else if p == q {
-		return p
-	} else {
-		return Blocker
-	}
+	return p & q
 }
 
 func (p Pixel) String() string {
@@ -156,8 +147,8 @@ func NewImage(repr string) (*Image, error) {
 
 func NewImageRaw(data []byte) (*Image, error) {
 	var image Image
-	image.Cols = int(binary.BigEndian.Uint16(data[0:2]))
-	image.Rows = int(binary.BigEndian.Uint16(data[2:4]))
+	image.Rows = int(binary.BigEndian.Uint16(data[0:2]))
+	image.Cols = int(binary.BigEndian.Uint16(data[2:4]))
 	image.Pixels = make([]Pixel, 0, image.Rows*image.Cols)
 
 	data = data[4:]
@@ -184,7 +175,7 @@ func (image *Image) String() string {
 	str := ""
 	for i := 0; i < image.Rows; i++ {
 		for j := 0; j < image.Cols; j++ {
-			str += image.Pixels[j*image.Rows+i].String()
+			str += image.Pixels[i*image.Cols+j].String()
 		}
 		str += "\n"
 	}
@@ -192,17 +183,14 @@ func (image *Image) String() string {
 	return str
 }
 
-func (image *Image) Add(rhs *Image) (*Image, error) {
-	if image.Rows != rhs.Rows || image.Cols != rhs.Cols {
-		return nil, errors.New("different size images getting added")
+func (image *Image) Add(rhs *Image) *Image {
+	size := image.Rows * image.Cols
+	result := Image{Rows: image.Rows, Cols: image.Cols, Pixels: make([]Pixel, size)}
+	for i := 0; i < size; i++ {
+		result.Pixels[i] = image.Pixels[i] & rhs.Pixels[i]
 	}
 
-	result := Image{Rows: image.Rows, Cols: image.Cols, Pixels: []Pixel{}}
-	for i, pixel := range image.Pixels {
-		result.Pixels = append(result.Pixels, pixel.Add(rhs.Pixels[i]))
-	}
-
-	return &result, nil
+	return &result
 }
 
 func (image *Image) Base64() string {
@@ -220,4 +208,8 @@ func (image *Image) Base64() string {
 	}
 
 	return base64.RawStdEncoding.EncodeToString(raw)
+}
+
+func (image *Image) GetRows(y1, y2 int) *Image {
+	return &Image{Rows: y2 - y1, Cols: image.Cols, Pixels: image.Pixels[y1*image.Cols : y2*image.Cols]}
 }

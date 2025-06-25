@@ -334,14 +334,45 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 			return nil, err
 		}
 
+		fmt.Print("\x1b[0J")
+
 		fmt.Println(image.Rows, image.Cols, image.Rows*image.Cols, len(image.Pixels))
 		fmt.Println(image)
 		share1, share2 := rsa.CreateShares(image)
-		fmt.Println(share1)
-		fmt.Println()
-		fmt.Println(share2)
-		fmt.Println()
-		fmt.Println(share1.Add(share2))
+
+		u := share1.String()
+		d := share2.String()
+		fmt.Print("\x1b[s")
+
+		initial := share1.Rows * 7 / 10
+		increment := 1
+
+		for i := 0; i < initial; i++ {
+			u = u[:max(strings.LastIndex(u, "\n"), 0)]
+			d = d[strings.Index(d, "\n")+1:]
+		}
+
+		for i := initial; i < share1.Rows+increment; i += increment {
+			if i > share1.Rows {
+				i = share1.Rows - increment
+				continue
+			}
+
+			m := share1.GetRows(share1.Rows-i, share1.Rows).Add(share2.GetRows(0, i)).String()
+
+			fmt.Print("\x1b[0J\x1b[u")
+			fmt.Print(u, "\n", m, d)
+
+			for i := 0; i < increment; i++ {
+				u = u[:max(strings.LastIndex(u, "\n"), 0)]
+				d = d[strings.Index(d, "\n")+1:]
+			}
+		}
+		// fmt.Println(share1)
+		// fmt.Println()
+		// fmt.Println(share2)
+		// fmt.Println()
+		// fmt.Println(share1.Add(share2))
 		return nil, nil
 	default:
 		fmt.Print("\x1b[1F\x1b[0K")
