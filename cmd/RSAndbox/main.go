@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/png"
 	"math/big"
 	"os"
 	"strconv"
@@ -312,6 +314,34 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 
 		fmt.Printf("  raw:   \x1b[33m%x\x1b[0m\n", secret)
 		fmt.Printf("  utf-8: \x1b[33m%s\x1b[0m\n", toSafeString(secret))
+		return nil, nil
+
+	case "image":
+		// Example: load image from file, convert, and print output size
+		inFile, err := os.Open(args)
+		if err != nil {
+			return nil, err
+		}
+		defer inFile.Close()
+
+		img, _, err := image.Decode(inFile)
+		if err != nil {
+			return nil, err
+		}
+
+		image, err := rsa.ConvertImageToBWBinary(img, 700) // Resize to width 128
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Println(image.Rows, image.Cols, image.Rows*image.Cols, len(image.Pixels))
+		fmt.Println(image)
+		share1, share2 := rsa.CreateShares(image)
+		fmt.Println(share1)
+		fmt.Println()
+		fmt.Println(share2)
+		fmt.Println()
+		fmt.Println(share1.Add(share2))
 		return nil, nil
 	default:
 		fmt.Print("\x1b[1F\x1b[0K")
