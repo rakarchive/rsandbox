@@ -302,7 +302,7 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 				return nil, err
 			}
 
-			shares[i] = shareInt.Bytes()
+			shares[i] = shareInt.Bytes()[:((shareInt.BitLen() + 7) / 8)]
 		}
 
 		secret, err := rsa.Decode(shares)
