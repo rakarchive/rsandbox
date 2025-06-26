@@ -343,36 +343,24 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 		fmt.Println(image)
 		share1, share2 := rsa.CreateShares(image)
 
-		u := share1.String()
-		d := share2.String()
-		fmt.Print("\x1b[s")
+		delta := 30000000
 
-		u = u[:len(u)-1]
-
-		delta := 10000000
-
-		initial := 3*image.Rows + 2 - height
+		initial := max(min(3*image.Rows+1-height, image.Rows), 0)
+		fmt.Println(initial)
 
 		buffer := rsa.Image{Pixels: make([]rsa.Pixel, 0, image.Rows*image.Cols)}
 
-		for i := 0; i < initial; i++ {
-			u = u[:max(strings.LastIndex(u, "\n"), 0)]
-			d = d[strings.Index(d, "\n")+1:]
-		}
+		fmt.Print("\x1b[s")
 
-		for i := 0; i <= share1.Rows; i++ {
+		for i := initial; i <= share1.Rows; i++ {
+			u := share1.GetRows(0, image.Rows-i)
 			m := share1.GetRows(share1.Rows-i, share1.Rows).Add(share2.GetRows(0, i), &buffer).String()
+			d := share2.GetRows(i, image.Rows)
 
 			fmt.Print("\x1b[0J\x1b[u")
-			if u != "" {
-				fmt.Print(u, '\n')
-			}
-			fmt.Print(m, d)
-
-			u = u[:max(strings.LastIndex(u, "\n"), 0)]
-			d = d[strings.Index(d, "\n")+1:]
-
+			fmt.Print(u, m, d)
 			fmt.Print("\x1b[0J")
+
 			time.Sleep(time.Duration(delta) * time.Nanosecond)
 		}
 
