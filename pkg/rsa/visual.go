@@ -6,10 +6,8 @@ import (
 	"encoding/binary"
 	"image"
 	"image/color"
-	"image/png"
 	"math"
 	"math/rand/v2"
-	"os"
 
 	"golang.org/x/image/draw"
 )
@@ -28,16 +26,6 @@ func ConvertImageToBWBinary(img image.Image, resizeWidth int) (*Image, error) {
 		resized := image.NewRGBA(image.Rect(0, 0, resizeWidth, newHeight))
 		draw.NearestNeighbor.Scale(resized, resized.Bounds(), img, origBounds, draw.Over, nil)
 		img = resized
-	}
-
-	file, err := os.Create("resize.png")
-	if err != nil {
-		return nil, err
-	}
-
-	err = png.Encode(file, img)
-	if err != nil {
-		return nil, err
 	}
 
 	bounds := img.Bounds()
@@ -122,18 +110,12 @@ func (p Pixel) Add(q Pixel) Pixel {
 }
 
 func (p Pixel) String() string {
-	switch p {
-	case White:
-		return "██"
-	case Black:
-		return "  "
-	case Left:
-		return "█ "
-	case Right:
-		return " █"
-	}
-
-	panic("unreachable")
+	return []string{
+		White: "██",
+		Black: "  ",
+		Left:  "█ ",
+		Right: " █",
+	}[p]
 }
 
 func NewImage(repr string) (*Image, error) {
@@ -183,14 +165,16 @@ func (image *Image) String() string {
 	return str
 }
 
-func (image *Image) Add(rhs *Image) *Image {
+func (image *Image) Add(rhs *Image, result *Image) *Image {
 	size := image.Rows * image.Cols
-	result := Image{Rows: image.Rows, Cols: image.Cols, Pixels: make([]Pixel, size)}
-	for i := 0; i < size; i++ {
+	result.Rows = image.Rows
+	result.Cols = image.Cols
+	result.Pixels = result.Pixels[:size]
+	for i := 0; i < len(result.Pixels); i++ {
 		result.Pixels[i] = image.Pixels[i] & rhs.Pixels[i]
 	}
 
-	return &result
+	return result
 }
 
 func (image *Image) Base64() string {

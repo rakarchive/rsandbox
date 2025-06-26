@@ -10,9 +10,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/rakarchive/rsa/pkg/rsa"
+	"golang.org/x/term"
 )
 
 type context struct {
@@ -324,19 +326,20 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 		}
 		defer inFile.Close()
 
+		width, height, _ := term.GetSize(0)
+
 		img, _, err := image.Decode(inFile)
 		if err != nil {
 			return nil, err
 		}
 
-		image, err := rsa.ConvertImageToBWBinary(img, 700) // Resize to width 128
+		image, err := rsa.ConvertImageToBWBinary(img, width/2) // Resize to width 128
 		if err != nil {
 			return nil, err
 		}
 
-		fmt.Print("\x1b[0J")
+		fmt.Print("\x1b[2J\x1b[H")
 
-		fmt.Println(image.Rows, image.Cols, image.Rows*image.Cols, len(image.Pixels))
 		fmt.Println(image)
 		share1, share2 := rsa.CreateShares(image)
 
@@ -344,35 +347,35 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 		d := share2.String()
 		fmt.Print("\x1b[s")
 
-		initial := share1.Rows * 7 / 10
-		increment := 1
+		u = u[:len(u)-1]
+
+		delta := 10000000
+
+		initial := 3*image.Rows + 2 - height
+
+		buffer := rsa.Image{Pixels: make([]rsa.Pixel, 0, image.Rows*image.Cols)}
 
 		for i := 0; i < initial; i++ {
 			u = u[:max(strings.LastIndex(u, "\n"), 0)]
 			d = d[strings.Index(d, "\n")+1:]
 		}
 
-		for i := initial; i < share1.Rows+increment; i += increment {
-			if i > share1.Rows {
-				i = share1.Rows - increment
-				continue
-			}
-
-			m := share1.GetRows(share1.Rows-i, share1.Rows).Add(share2.GetRows(0, i)).String()
+		for i := 0; i <= share1.Rows; i++ {
+			m := share1.GetRows(share1.Rows-i, share1.Rows).Add(share2.GetRows(0, i), &buffer).String()
 
 			fmt.Print("\x1b[0J\x1b[u")
-			fmt.Print(u, "\n", m, d)
-
-			for i := 0; i < increment; i++ {
-				u = u[:max(strings.LastIndex(u, "\n"), 0)]
-				d = d[strings.Index(d, "\n")+1:]
+			if u != "" {
+				fmt.Print(u, '\n')
 			}
+			fmt.Print(m, d)
+
+			u = u[:max(strings.LastIndex(u, "\n"), 0)]
+			d = d[strings.Index(d, "\n")+1:]
+
+			fmt.Print("\x1b[0J")
+			time.Sleep(time.Duration(delta) * time.Nanosecond)
 		}
-		// fmt.Println(share1)
-		// fmt.Println()
-		// fmt.Println(share2)
-		// fmt.Println()
-		// fmt.Println(share1.Add(share2))
+
 		return nil, nil
 	default:
 		fmt.Print("\x1b[1F\x1b[0K")
