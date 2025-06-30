@@ -333,7 +333,9 @@ func (context *context) RunCmd(cmd, args string, auto bool) (*big.Int, error) {
 			return nil, err
 		}
 
-		image, err := rsa.ConvertImageToBWBinary(img, width/2) // Resize to width 128
+		new_width := width / 2
+
+		image, err := rsa.ConvertImageToBWBinary(img, new_width) // Resize to width 128
 		if err != nil {
 			return nil, err
 		}

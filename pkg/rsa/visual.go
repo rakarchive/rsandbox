@@ -93,16 +93,17 @@ func CreateShares(secret *Image) (*Image, *Image) {
 type Pixel byte
 
 const (
-	White Pixel = 0b00
-	Black Pixel = ^White & 0b11
-	Left  Pixel = 0b10
-	Right Pixel = 0b01
+	Blocker Pixel = 0b00
+	Transpr Pixel = 0b11
+	Left    Pixel = 0b10
+	Right   Pixel = 0b01
 
-	Blocker = White
+	White Pixel = Transpr
+	Black Pixel = White ^ 0b11
 )
 
 func (p Pixel) Other() Pixel {
-	return ^p & 0b11
+	return p ^ 0b11
 }
 
 func (p Pixel) Add(q Pixel) Pixel {
@@ -111,10 +112,10 @@ func (p Pixel) Add(q Pixel) Pixel {
 
 func (p Pixel) String() string {
 	return []string{
-		White: "██",
-		Black: "  ",
-		Left:  "█ ",
-		Right: " █",
+		Blocker:        "██",
+		Blocker ^ 0b11: "  ",
+		Left:           "█ ",
+		Right:          " █",
 	}[p]
 }
 
